@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autonomous Agent Hub | Fleet Management & MCP Tooling</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="/static/css/custom.css">
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen antialiased selection:bg-indigo-500 selection:text-white flex flex-col justify-between">
+
+  <!-- Background Decorative Ambient Glows -->
+  <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+    <div class="absolute -top-40 -left-40 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl"></div>
+    <div class="absolute top-1/3 -right-40 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl"></div>
+    <div class="absolute -bottom-40 left-1/3 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl"></div>
+  </div>
+
+  <!-- Primary Wrapper -->
+  <div class="relative z-10 flex-1 flex flex-col">
+    
+    <!-- Top Navigation Header -->
+    <header class="border-b border-slate-800/80 glass-panel sticky top-0 z-30">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+        
+        <!-- Left: Logo & System Identity -->
+        <div class="flex items-center gap-4">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 p-0.5 shadow-lg shadow-indigo-500/20">
+            <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+              <i data-lucide="bot" class="w-5 h-5 text-indigo-400"></i>
+            </div>
+          </div>
+          <div>
+            <div class="flex items-center gap-2.5">
+              <h1 class="text-base sm:text-lg font-bold tracking-tight text-white uppercase font-mono">
+                Autonomous Agent Hub
+              </h1>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                ONLINE
+              </span>
+            </div>
+            <p class="text-xs text-slate-400">Distributed AI Personas & Remote MCP Tool Orchestration</p>
+          </div>
+        </div>
+
+        <!-- Center: Fleet Live Telemetry Quick Counters -->
+        <div class="hidden md:flex items-center gap-6 bg-slate-900/60 border border-slate-800/80 px-4 py-2 rounded-xl backdrop-blur-sm">
+          <div class="flex items-center gap-2">
+            <i data-lucide="cpu" class="w-4 h-4 text-indigo-400"></i>
+            <div>
+              <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Total Agents</div>
+              <div id="stat-total-agents" class="text-sm font-bold text-slate-100 font-mono">0</div>
+            </div>
+          </div>
+          <div class="w-px h-6 bg-slate-800"></div>
+          <div class="flex items-center gap-2">
+            <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>
+            <div>
+              <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Active Fleets</div>
+              <div id="stat-active-agents" class="text-sm font-bold text-emerald-400 font-mono">0</div>
+            </div>
+          </div>
+          <div class="w-px h-6 bg-slate-800"></div>
+          <div class="flex items-center gap-2">
+            <i data-lucide="plug-zap" class="w-4 h-4 text-amber-400"></i>
+            <div>
+              <div class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Connected MCPs</div>
+              <div id="stat-total-mcps" class="text-sm font-bold text-amber-400 font-mono">0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Primary CTA -->
+        <div class="flex items-center gap-3">
+          <button onclick="openModal('create-agent-modal')" class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 shadow-lg shadow-indigo-600/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            <span>+ Create Agent</span>
+          </button>
+        </div>
+
+      </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+
+      <!-- Controls Toolbar (Search & Filter) -->
+      <div class="mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 glass-panel p-4 rounded-2xl border border-slate-800">
+        
+        <!-- Search -->
+        <div class="relative w-full sm:w-96">
+          <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+          <input type="text" id="search-input" placeholder="Search by name, role, or persona directives..." class="w-full bg-slate-900/90 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2 text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all">
+        </div>
+
+        <!-- Filters & Refresh -->
+        <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+          <select id="filter-active" class="bg-slate-900/90 border border-slate-700/80 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-300 focus:outline-none focus:border-indigo-500">
+            <option value="all">All Fleets</option>
+            <option value="active">Active Only</option>
+            <option value="inactive">Inactive Only</option>
+          </select>
+
+          <button onclick="loadAgents()" title="Refresh Agent Grid" class="p-2 bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-300 hover:text-white rounded-xl text-xs transition-colors">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Loading State -->
+      <div id="agents-loading" class="hidden grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="glass-card rounded-2xl p-6 animate-pulse h-64 border border-slate-800"></div>
+        <div class="glass-card rounded-2xl p-6 animate-pulse h-64 border border-slate-800"></div>
+        <div class="glass-card rounded-2xl p-6 animate-pulse h-64 border border-slate-800"></div>
+      </div>
+
+      <!-- Empty State -->
+      <div id="agents-empty" class="hidden flex flex-col items-center justify-center py-20 text-center glass-panel rounded-3xl border border-slate-800/80 p-8">
+        <div class="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mb-4 text-indigo-400">
+          <i data-lucide="bot-off" class="w-8 h-8"></i>
+        </div>
+        <h3 class="text-lg font-bold text-slate-200 mb-1">No Autonomous Agents Found</h3>
+        <p class="text-xs text-slate-400 max-w-sm mb-6">There are no agents matching your current filter criteria. Create a new specialized agent to begin deployment.</p>
+        <button onclick="openModal('create-agent-modal')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg">
+          <i data-lucide="plus" class="w-4 h-4"></i> Deploy First Agent
+        </button>
+      </div>
+
+      <!-- Main Agent Card Grid -->
+      <div id="agents-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Rendered dynamically via app.js -->
+      </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800/60 glass-panel py-6 mt-12">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+        <div class="flex items-center gap-2">
+          <i data-lucide="terminal" class="w-4 h-4 text-indigo-400"></i>
+          <span>Autonomous Agent Hub Architecture v1.0 • Built with FastAPI, SQLite & Gemini LLM</span>
+        </div>
+        <div class="flex items-center gap-4 font-mono text-[11px]">
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> REST API Ready</span>
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span> Model Context Protocol (MCP)</span>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODALS & DRAWERS -->
+  <!-- ========================================================================= -->
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 max-w-sm pointer-events-none"></div>
+
+  <!-- 1. CREATE AGENT MODAL -->
+  <div id="create-agent-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+    <div class="glass-modal rounded-3xl w-full max-w-xl p-6 sm:p-8 shadow-2xl border border-slate-700 relative overflow-hidden max-h-[90vh] flex flex-col justify-between">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Deploy Autonomous Agent</h3>
+            <p class="text-xs text-slate-400">Configure cognitive parameters, role persona, and avatar styling</p>
+          </div>
+        </div>
+        <button onclick="closeModal('create-agent-modal')" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Quick Template Presets -->
+      <div class="pt-4">
+        <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">Quick Role Presets</label>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+          <button type="button" onclick="applyAgentPreset('procurement')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
+            📦 Procurement Lead
+          </button>
+          <button type="button" onclick="applyAgentPreset('cad')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
+            📐 CAD Engineer
+          </button>
+          <button type="button" onclick="applyAgentPreset('cyber')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
+            🛡️ SOC Sentinel
+          </button>
+          <button type="button" onclick="applyAgentPreset('code')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
+            💻 Code Architect
+          </button>
+        </div>
+      </div>
+
+      <!-- Form Body -->
+      <form id="create-agent-form" class="space-y-4 overflow-y-auto pr-1">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Agent Name *</label>
+          <input type="text" name="name" required placeholder="e.g. Arjun - Procurement Specialist" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Role / Designation *</label>
+            <input type="text" name="role" required placeholder="e.g. Procurement Lead, Civil Engineer" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Avatar Accent Color</label>
+            <select name="avatar_color" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+              <option value="emerald">Emerald Green (Strategic / Procure)</option>
+              <option value="cyan">Cyan Teal (Engineering / CAD)</option>
+              <option value="amber">Amber Gold (Security / Ops)</option>
+              <option value="violet">Violet Purple (Architecture / Code)</option>
+              <option value="rose">Rose Red (Compliance / Audit)</option>
+              <option value="indigo">Indigo Blue (Executive / Strategy)</option>
+              <option value="blue">Sky Blue (Support / Communication)</option>
+              <option value="fuchsia">Fuchsia Pink (Creative / Research)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">System Instructions & Cognitive Persona *</label>
+          <textarea name="system_prompt" required rows="4" placeholder="Define the agent's behavior, tone, cognitive bounds, decision protocols, and problem-solving constraints..." class="w-full bg-slate-900 border border-slate-700/80 rounded-xl p-3 text-xs sm:text-sm text-slate-100 font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"></textarea>
+        </div>
+
+        <div class="flex items-center gap-2 pt-1">
+          <input type="checkbox" id="create-is-active" name="is_active" checked class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500">
+          <label for="create-is-active" class="text-xs text-slate-300 font-medium">Activate fleet immediately upon deployment</label>
+        </div>
+
+        <!-- Submit & Actions -->
+        <div class="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+          <button type="button" onclick="closeModal('create-agent-modal')" class="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+            Cancel
+          </button>
+          <button type="submit" id="create-agent-submit-btn" class="px-5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all">
+            Deploy Agent
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- 2. EDIT AGENT MODAL -->
+  <div id="edit-agent-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+    <div class="glass-modal rounded-3xl w-full max-w-xl p-6 sm:p-8 shadow-2xl border border-slate-700 relative overflow-hidden max-h-[90vh] flex flex-col justify-between">
+      
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300">
+            <i data-lucide="settings-2" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Edit Agent Configuration</h3>
+            <p class="text-xs text-slate-400">Update persona directives and operational parameters</p>
+          </div>
+        </div>
+        <button onclick="closeModal('edit-agent-modal')" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="edit-agent-form" class="space-y-4 pt-4 overflow-y-auto pr-1">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Agent Name *</label>
+          <input type="text" name="edit-name" required class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Role / Designation *</label>
+            <input type="text" name="edit-role" required class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Avatar Accent Color</label>
+            <select name="edit-avatar_color" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+              <option value="emerald">Emerald Green</option>
+              <option value="cyan">Cyan Teal</option>
+              <option value="amber">Amber Gold</option>
+              <option value="violet">Violet Purple</option>
+              <option value="rose">Rose Red</option>
+              <option value="indigo">Indigo Blue</option>
+              <option value="blue">Sky Blue</option>
+              <option value="fuchsia">Fuchsia Pink</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">System Instructions & Cognitive Persona *</label>
+          <textarea name="edit-system_prompt" required rows="4" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl p-3 text-xs sm:text-sm text-slate-100 font-mono focus:outline-none focus:border-indigo-500"></textarea>
+        </div>
+
+        <div class="flex items-center gap-2 pt-1">
+          <input type="checkbox" id="edit-is-active" name="edit-is_active" class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-indigo-500">
+          <label for="edit-is-active" class="text-xs text-slate-300 font-medium">Agent Active Status</label>
+        </div>
+
+        <div class="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+          <button type="button" onclick="closeModal('edit-agent-modal')" class="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+            Cancel
+          </button>
+          <button type="submit" class="px-5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition-all">
+            Save Changes
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- 3. ADD SKILL (MCP ENDPOINT) MODAL -->
+  <div id="add-skill-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+    <div class="glass-modal rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl border border-slate-700 relative overflow-hidden">
+      
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+            <i data-lucide="plug-zap" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Attach Remote MCP Skill</h3>
+            <p class="text-xs text-slate-400">Attach endpoint to <span id="add-skill-agent-title" class="text-amber-300 font-semibold">Agent</span></p>
+          </div>
+        </div>
+        <button onclick="closeModal('add-skill-modal')" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Quick Preset Endpoints -->
+      <div class="pt-4">
+        <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">Preset MCP Templates</label>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <button type="button" onclick="applySkillPreset('WhatsApp Gateway', 'https://mcp-whatsapp-bridge.onrender.com/sse')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
+            💬 WhatsApp MCP
+          </button>
+          <button type="button" onclick="applySkillPreset('CAD Vector Engine', 'https://cad-mesh-endpoint.onrender.com/sse')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
+            📐 CAD Mesh API
+          </button>
+          <button type="button" onclick="applySkillPreset('ERP Database Sync', 'https://erp-connector.internal.net/mcp')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
+            📊 ERP Sync
+          </button>
+          <button type="button" onclick="applySkillPreset('GitHub Code MCP', 'https://github-mcp.render.com/events')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
+            🐙 GitHub MCP
+          </button>
+        </div>
+      </div>
+
+      <form id="add-skill-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Skill Name *</label>
+          <input type="text" name="skill_name" required placeholder="e.g. WhatsApp MCP, CAD Engine" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Remote Endpoint URL (SSE or HTTP) *</label>
+          <input type="url" name="skill_url" required placeholder="e.g. https://skill-whatsapp.onrender.com/sse" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-100 font-mono placeholder-slate-500 focus:outline-none focus:border-amber-500">
+          <span class="text-[10px] text-slate-500 mt-1 block">Compatible with Standard Model Context Protocol (MCP) Server-Sent Events or REST endpoints.</span>
+        </div>
+
+        <div class="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+          <button type="button" onclick="closeModal('add-skill-modal')" class="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+            Cancel
+          </button>
+          <button type="submit" class="px-5 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/30 transition-all">
+            Attach Skill
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- 4. VIEW PROMPT MODAL -->
+  <div id="view-prompt-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+    <div class="glass-modal rounded-3xl w-full max-w-xl p-6 sm:p-8 shadow-2xl border border-slate-700 relative overflow-hidden">
+      
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+            <i data-lucide="cpu" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 id="view-prompt-title" class="text-base font-bold text-white">Agent Persona</h3>
+            <p id="view-prompt-role" class="text-xs text-indigo-400 font-mono">Specialist</p>
+          </div>
+        </div>
+        <button onclick="closeModal('view-prompt-modal')" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="py-4">
+        <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">Cognitive System Instructions & Prompt</label>
+        <div id="view-prompt-body" class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto"></div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-800 flex justify-end">
+        <button onclick="closeModal('view-prompt-modal')" class="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition-colors">
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 5. CHAT / TEST SLIDE-OVER DRAWER -->
+  <div id="chat-drawer-backdrop" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden opacity-0 drawer-backdrop">
+    <div class="fixed inset-y-0 right-0 max-w-full flex pl-10">
+      
+      <div id="chat-drawer-panel" class="w-screen max-w-xl glass-modal border-l border-slate-800 flex flex-col justify-between shadow-2xl transform translate-x-full drawer-panel">
+        
+        <!-- Drawer Header -->
+        <div class="p-4 sm:p-5 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div id="drawer-agent-avatar" class="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm">
+              A
+            </div>
+            <div>
+              <h3 id="drawer-agent-name" class="font-bold text-sm sm:text-base text-white">Agent</h3>
+              <p id="drawer-agent-role" class="text-xs text-slate-400 font-mono">Role</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button onclick="closeChatDrawer()" class="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Tooling / MCP Information Bar -->
+        <div id="drawer-skills-bar" class="px-4 py-2 bg-slate-900/80 border-b border-slate-800 flex items-center gap-1.5 overflow-x-auto text-xs shrink-0">
+          <!-- Populated dynamically -->
+        </div>
+
+        <!-- Quick Test Chips -->
+        <div class="px-4 py-2 bg-slate-950/40 border-b border-slate-800/60 flex items-center gap-2 overflow-x-auto text-[11px] shrink-0">
+          <span class="text-slate-500 text-[10px] uppercase font-semibold shrink-0">Test prompts:</span>
+          <button onclick="sendQuickPrompt('Run a comprehensive system audit and state your execution bounds.')" class="px-2.5 py-1 rounded-full bg-slate-900 hover:bg-indigo-950/60 border border-slate-800 text-slate-300 hover:text-indigo-300 transition-colors shrink-0">
+            🔍 Audit & Bounds
+          </button>
+          <button onclick="sendQuickPrompt('List your attached tools and explain how you leverage them.')" class="px-2.5 py-1 rounded-full bg-slate-900 hover:bg-indigo-950/60 border border-slate-800 text-slate-300 hover:text-indigo-300 transition-colors shrink-0">
+            🛠️ Tool Inspection
+          </button>
+          <button onclick="sendQuickPrompt('Generate a prioritized execution plan for your next operational cycle.')" class="px-2.5 py-1 rounded-full bg-slate-900 hover:bg-indigo-950/60 border border-slate-800 text-slate-300 hover:text-indigo-300 transition-colors shrink-0">
+            📋 Execution Plan
+          </button>
+        </div>
+
+        <!-- Chat Bubble History Container -->
+        <div id="chat-messages-container" class="flex-1 p-4 sm:p-6 overflow-y-auto space-y-2">
+          <!-- Messages dynamically appended -->
+        </div>
+
+        <!-- Chat Input Footer -->
+        <div class="p-4 border-t border-slate-800 bg-slate-950/80">
+          <div class="relative flex items-center">
+            <textarea id="chat-input-text" rows="2" placeholder="Send instructions or test directive to autonomous agent (Press Enter to send)..." class="w-full bg-slate-900/90 border border-slate-700/80 rounded-2xl pl-4 pr-14 py-3 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-none font-mono"></textarea>
+            
+            <button id="chat-send-btn" onclick="sendChatMessage()" class="absolute right-2.5 p-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white rounded-xl shadow-md transition-all">
+              <i data-lucide="send" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <div class="flex items-center justify-between text-[10px] text-slate-500 mt-2 px-1">
+            <span>Powered by Google Gemini Autonomous Cognition</span>
+            <span class="font-mono">Shift + Enter for new line</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <!-- App Script -->
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
