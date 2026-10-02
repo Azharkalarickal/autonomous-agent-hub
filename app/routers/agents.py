@@ -224,6 +224,11 @@ def get_agent_logs(agent_id: str, limit: int = 50, db: Session = Depends(get_db)
     return logs
 
 
+import json
+from fastapi.responses import StreamingResponse
+from app.services.llm_service import generate_agent_response, generate_agent_response_stream
+
+
 @router.post("/{agent_id}/chat", response_model=ChatResponse)
 async def chat_with_agent(
     agent_id: str,
@@ -272,4 +277,88 @@ async def chat_with_agent(
         status=task_log.status,
         task_log_id=task_log.id,
         created_at=task_log.created_at
+    )
+
+
+@router.post("/{agent_id}/chat/stream")
+async def chat_with_agent_stream(
+    agent_id: str,
+    chat_in: ChatRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Real-time streaming chat endpoint yielding execution stepper status events and final response.
+    """
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent with ID '{agent_id}' not found"
+        )
+
+    if not agent.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Agent '{agent.name}' is currently inactive. Please toggle active status to test."
+        )
+
+    # Cache attributes before generator context
+    agent_name = agent.name
+    agent_role = agent.role
+    system_prompt = agent.system_prompt
+    skills = list(agent.skills)
+
+    async def event_generator():
+        final_response = ""
+        final_status = "success"
+        try:
+            async for event in generate_agent_response_stream(
+                agent_name=agent_name,
+                agent_role=agent_role,
+                system_prompt=system_prompt,
+                skills=skills,
+                user_message=chat_in.message
+            ):
+                if event.get("type") == "status":
+                    yield f"data: {json.dumps(event)}\n\n"
+                elif event.get("type") == "final":
+                    final_response = event.get("response", "")
+                    final_status = event.get("status", "success")
+
+            # Persist to TaskLog
+            task_log = TaskLog(
+                agent_id=agent_id,
+                user_input=chat_in.message,
+                agent_response=final_response,
+                status=final_status
+            )
+            db.add(task_log)
+            db.commit()
+            db.refresh(task_log)
+
+            final_payload = {
+                "type": "final",
+                "response": final_response,
+                "status": final_status,
+                "task_log_id": task_log.id,
+                "created_at": task_log.created_at.isoformat()
+            }
+            yield f"data: {json.dumps(final_payload)}\n\n"
+
+        except Exception as e:
+            err_payload = {
+                "type": "final",
+                "response": f"⚠️ Error: {str(e)}",
+                "status": "failed"
+            }
+            yield f"data: {json.dumps(err_payload)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
     )

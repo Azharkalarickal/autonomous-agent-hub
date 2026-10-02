@@ -1,6 +1,7 @@
 import logging
 import json
-from typing import List, Optional, Tuple, Dict, Any
+import asyncio
+from typing import List, Optional, Tuple, Dict, Any, AsyncGenerator
 import requests
 
 from app.core.config import settings
@@ -74,44 +75,45 @@ def to_serializable_dict(val: Any) -> Any:
 def _resolve_candidate_urls(url: str, is_deploy: bool = False) -> List[str]:
     """
     Computes priority list of candidate POST endpoints.
-    If given an SSE URL (ending in /sse), adapts to FastMCP /messages/ and REST handler routes.
+    If given an SSE URL (ending in /sse), strips /sse and adapts to FastMCP /messages/ and REST handler routes.
     """
     cleaned_url = url.strip()
     candidates = []
 
+    # Strip /sse if present to avoid 405 Method Not Allowed (GET only)
+    base = cleaned_url
     if "/sse" in cleaned_url.lower():
-        # Strip /sse or /sse/
         base = cleaned_url.rstrip("/")
         if base.lower().endswith("/sse"):
             base = base[:-4].rstrip("/")
+        elif "/sse/" in base.lower():
+            base = base.split("/sse/")[0].rstrip("/")
+        elif "/sse" in base.lower():
+            base = base.split("/sse")[0].rstrip("/")
 
-        if is_deploy:
-            candidates.extend([
-                f"{base}/api/skills/deploy",
-                f"{base}/deploy",
-                f"{base}/api/skills",
-                f"{base}/messages/",
-                f"{base}/messages",
-            ])
-        else:
-            candidates.extend([
-                f"{base}/messages/",
-                f"{base}/messages",
-                f"{base}/tools/call",
-                f"{base}/api/execute",
-            ])
-        # Also keep original as last resort
-        candidates.append(cleaned_url)
+    if is_deploy:
+        candidates.extend([
+            f"{base}/api/skills/deploy",
+            f"{base}/deploy",
+            f"{base}/api/skills",
+            f"{base}/messages/",
+            f"{base}/messages",
+            f"{base}/tools/call",
+            f"{base}/run-tool",
+            f"{base}/"
+        ])
     else:
-        candidates.append(cleaned_url)
-        # If standard base URL provided, add common paths
-        base = cleaned_url.rstrip("/")
-        if is_deploy:
-            candidates.extend([f"{base}/api/skills/deploy", f"{base}/deploy"])
-        else:
-            candidates.extend([f"{base}/messages/", f"{base}/tools/call"])
+        candidates.extend([
+            f"{base}/messages/",
+            f"{base}/messages",
+            f"{base}/tools/call",
+            f"{base}/run-tool",
+            f"{base}/api/execute",
+            f"{base}/api/skills/deploy",
+            f"{base}/"
+        ])
 
-    # Deduplicate while preserving order
+    # Deduplicate while preserving priority order
     seen = set()
     unique_candidates = []
     for c in candidates:
@@ -124,7 +126,7 @@ def _resolve_candidate_urls(url: str, is_deploy: bool = False) -> List[str]:
 def _dispatch_remote_http(url: str, payload: Dict[str, Any], method: str = "POST", is_deploy: bool = False) -> Dict[str, Any]:
     """
     Sends a real HTTP request to remote MCP or Skill Builder endpoints.
-    Handles SSE -> /messages/ FastMCP adaptation, JSON-RPC formatting, and comprehensive response logging.
+    Automatically handles /sse stripping, FastMCP /messages/ adaptation, JSON-RPC formatting, and full error logging.
     """
     headers = {
         "Content-Type": "application/json",
@@ -143,9 +145,9 @@ def _dispatch_remote_http(url: str, payload: Dict[str, Any], method: str = "POST
             if method.upper() == "GET":
                 resp = requests.get(target_url, params=clean_payload, headers=headers, timeout=25)
             else:
-                # If target is a /messages or /messages/ endpoint, adapt to FastMCP JSON-RPC structure if not already formatted
+                # Format payload according to endpoint expectations
                 post_body = clean_payload
-                if "/messages" in target_url.lower() and not ("jsonrpc" in clean_payload):
+                if ("/messages" in target_url.lower() or "/tools/call" in target_url.lower()) and not ("jsonrpc" in clean_payload):
                     post_body = {
                         "jsonrpc": "2.0",
                         "method": "tools/call",
@@ -174,13 +176,13 @@ def _dispatch_remote_http(url: str, payload: Dict[str, Any], method: str = "POST
             }
 
             if resp.status_code in (200, 201, 202):
-                logger.info(f"Success from '{target_url}' (Status {resp.status_code})")
+                logger.info(f"Success from '{target_url}' (HTTP {resp.status_code}): {str(data)[:200]}")
                 return last_response_info
 
-            # If 405 Method Not Allowed or 404, log and attempt next candidate URL
+            # If 405 Method Not Allowed or 404, log full diagnostics and try next route
             logger.warning(
-                f"HTTP {resp.status_code} received from '{target_url}'. "
-                f"Response body: {resp.text[:300]}. Attempting next candidate..."
+                f"HTTP {resp.status_code} from '{target_url}'. "
+                f"Response body: {resp.text[:300]}. Attempting next candidate endpoint..."
             )
 
         except requests.exceptions.Timeout:
@@ -200,7 +202,8 @@ def _dispatch_remote_http(url: str, payload: Dict[str, Any], method: str = "POST
                 "endpoint": target_url
             }
 
-    # If all candidates exhausted, return best diagnostic information
+    # All candidate URLs exhausted
+    logger.error(f"All candidate routes failed for {url}. Last diagnostic: {last_response_info}")
     return last_response_info or {
         "status_code": 500,
         "success": False,
@@ -220,7 +223,6 @@ def execute_tool_call(func_name: str, args: Dict[str, Any], skills: List[AgentSk
         code = args.get("code", "")
         language = args.get("language", "python")
         
-        # Check if there is a connected builder skill URL, otherwise use default
         target_url = DEFAULT_SKILL_BUILDER_ENDPOINT + "/api/skills/deploy"
         for s in skills:
             if s.is_enabled and ("builder" in s.skill_name.lower() or "deploy" in s.skill_url.lower() or "skill" in s.skill_name.lower()):
@@ -235,7 +237,6 @@ def execute_tool_call(func_name: str, args: Dict[str, Any], skills: List[AgentSk
         }
         res = _dispatch_remote_http(target_url, payload, method="POST", is_deploy=True)
         
-        # Format response
         if res.get("success"):
             data = res.get("data", {})
             live_url = (
@@ -301,7 +302,7 @@ def execute_tool_call(func_name: str, args: Dict[str, Any], skills: List[AgentSk
 
 
 # =========================================================================
-# Tool Function Signatures for Gemini
+# Tool Function Declarations for Gemini
 # =========================================================================
 
 def create_mcp_skill(skill_name: str, description: str, language: str = "python", code: str = "") -> dict:
@@ -357,21 +358,23 @@ def get_agent_gemini_tools(skills: List[AgentSkill]) -> list:
 
 
 # =========================================================================
-# Core LLM Generation & Multi-Turn Tool Loop
+# Core LLM Generation & Multi-Turn Tool Loop with Streaming Progress
 # =========================================================================
 
-async def generate_agent_response(
+async def generate_agent_response_stream(
     agent_name: str,
     agent_role: str,
     system_prompt: str,
     skills: List[AgentSkill],
     user_message: str
-) -> Tuple[str, str]:
+) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Executes an autonomous LLM generation cycle using Google Gemini with dynamic MCP tool binding.
-    Executes real remote HTTP requests when tools are called and passes live responses back to Gemini.
-    Returns (response_text, status).
+    Yields step-by-step progress events for the UI Execution Status Stepper and the final response.
     """
+    yield {"type": "status", "text": "🧠 Analyzing prompt & selecting MCP tool..."}
+    await asyncio.sleep(0.1)
+
     system_instruction = build_system_instruction(
         agent_name=agent_name,
         agent_role=agent_role,
@@ -393,14 +396,14 @@ async def generate_agent_response(
             f"• Persona Guidelines: *\"{system_prompt[:140]}...\"*\n\n"
             f"💡 *Running in local sandbox mode. Configure a live `GEMINI_API_KEY` in `.env` for real cloud MCP execution.*"
         )
-        return simulated_response, "success"
+        yield {"type": "final", "response": simulated_response, "status": "success"}
+        return
 
     try:
         import google.generativeai as genai
 
         genai.configure(api_key=api_key)
 
-        # Active candidate models in order of priority
         candidate_models = [
             "gemini-3.7-flash",
             "gemini-3.5-flash",
@@ -416,19 +419,15 @@ async def generate_agent_response(
 
         for model_name in candidate_models:
             try:
-                # 1. Initialize model with tools and system instruction
                 model = genai.GenerativeModel(
                     model_name=model_name,
                     system_instruction=system_instruction,
                     tools=tools
                 )
 
-                # 2. Start multi-turn chat to handle function calling
                 chat = model.start_chat()
                 response = chat.send_message(user_message)
 
-                # 3. Check for function calls in response candidates
-                # Loop to support multi-turn function call chains
                 max_iterations = 5
                 iteration = 0
 
@@ -442,20 +441,35 @@ async def generate_agent_response(
                                 function_calls.append(part.function_call)
 
                     if not function_calls:
-                        # No more tool calls, return final text
                         if response.text:
-                            return response.text, "success"
+                            yield {"type": "status", "text": "✨ Finalizing response..."}
+                            await asyncio.sleep(0.1)
+                            yield {"type": "final", "response": response.text, "status": "success"}
+                            return
                         break
 
                     # Execute each real tool call
                     for fc in function_calls:
                         fn_name = fc.name
                         fn_args = dict(fc.args) if fc.args else {}
-                        logger.info(f"Agent invoked native tool call '{fn_name}' with args: {fn_args}")
+                        
+                        tool_label = fn_args.get("skill_name") or fn_name.replace("_", " ").title()
+                        yield {"type": "status", "text": f"⚡ Dispatching call to {tool_label}..."}
+                        await asyncio.sleep(0.2)
+
+                        if fn_name in ("create_mcp_skill", "deploy_skill"):
+                            yield {"type": "status", "text": "📦 Creating repository & pushing files..."}
+                            await asyncio.sleep(0.3)
+                            yield {"type": "status", "text": "🚀 Deploying service to remote engine..."}
+                        else:
+                            yield {"type": "status", "text": f"🔄 Executing remote action '{fn_args.get('action', 'call')}'..."}
 
                         # Execute real HTTP request
                         real_result = execute_tool_call(fn_name, fn_args, skills)
-                        logger.info(f"Tool execution result: {real_result}")
+                        logger.info(f"Tool execution result for '{fn_name}': {real_result}")
+
+                        yield {"type": "status", "text": "✨ Parsing server response & synthesizing..."}
+                        await asyncio.sleep(0.2)
 
                         # Send FunctionResponse back to Gemini
                         response = chat.send_message(
@@ -472,14 +486,15 @@ async def generate_agent_response(
                         )
 
                 if response and response.text:
-                    return response.text, "success"
+                    yield {"type": "final", "response": response.text, "status": "success"}
+                    return
 
             except Exception as e:
                 last_error = e
                 logger.warning(f"Attempt with model {model_name} failed: {e}")
                 continue
 
-        # If rate limit or quota reached
+        # If quota is exhausted or temporary API limit reached
         err_str = str(last_error) if last_error else "Unknown Gemini Error"
         if "429" in err_str or "ResourceExhausted" in err_str or "quota" in err_str.lower():
             active_skills_names = [s.skill_name for s in skills if s.is_enabled]
@@ -493,12 +508,32 @@ async def generate_agent_response(
                 f"• Target Endpoint: `{DEFAULT_SKILL_BUILDER_ENDPOINT}`\n\n"
                 f"⚡ *Notice: Gemini API rate limit / daily quota threshold reached. System performed cognitive evaluation.*"
             )
-            return cognitive_fallback, "success"
+            yield {"type": "final", "response": cognitive_fallback, "status": "success"}
+            return
 
         err_msg = f"Gemini API Error: {err_str}"
         logger.error(err_msg)
-        return f"⚠️ **Execution Alert**: `{err_msg}`", "failed"
+        yield {"type": "final", "response": f"⚠️ **Execution Alert**: `{err_msg}`", "status": "failed"}
 
     except Exception as e:
         logger.exception("Unexpected error in LLM service")
-        return f"⚠️ **System Exception**: {str(e)}", "failed"
+        yield {"type": "final", "response": f"⚠️ **System Exception**: {str(e)}", "status": "failed"}
+
+
+async def generate_agent_response(
+    agent_name: str,
+    agent_role: str,
+    system_prompt: str,
+    skills: List[AgentSkill],
+    user_message: str
+) -> Tuple[str, str]:
+    """
+    Convenience wrapper returning (response_text, status) by consuming the generator.
+    """
+    final_res = "No response generated"
+    final_status = "failed"
+    async for event in generate_agent_response_stream(agent_name, agent_role, system_prompt, skills, user_message):
+        if event.get("type") == "final":
+            final_res = event.get("response", "")
+            final_status = event.get("status", "success")
+    return final_res, final_status

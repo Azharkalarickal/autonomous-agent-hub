@@ -657,20 +657,35 @@ async function sendChatMessage() {
   // Append user message immediately
   appendMessageToChat('user', message);
 
-  // Show typing indicator
+  // Show dynamic execution status stepper indicator
   const container = document.getElementById('chat-messages-container');
   const typingDiv = document.createElement('div');
   typingDiv.id = 'chat-typing-indicator';
-  typingDiv.className = 'flex justify-start mb-4 gap-2.5';
+  typingDiv.className = 'flex justify-start mb-4 gap-2.5 animate-fadeIn';
+  
+  const colorKey = activeAgentForChat.avatar_color || 'emerald';
+  const colorStyle = AVATAR_COLORS[colorKey] || AVATAR_COLORS.emerald;
+
   typingDiv.innerHTML = `
-    <div class="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center font-bold text-xs text-indigo-400 shrink-0">
+    <div class="w-7 h-7 rounded-lg ${colorStyle.bg} ${colorStyle.border} border flex items-center justify-center font-bold text-xs ${colorStyle.text} shrink-0 mt-0.5">
       <i data-lucide="sparkles" class="w-3.5 h-3.5 animate-spin"></i>
     </div>
-    <div class="chat-bubble-agent px-4 py-3 rounded-2xl rounded-tl-none text-xs text-slate-400 flex items-center gap-1.5 border border-slate-800">
-      <span class="w-2 h-2 rounded-full bg-indigo-400 animate-bounce"></span>
-      <span class="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style="animation-delay: 0.2s"></span>
-      <span class="w-2 h-2 rounded-full bg-indigo-400 animate-bounce" style="animation-delay: 0.4s"></span>
-      <span class="text-[11px] ml-1.5 font-mono text-indigo-300">Cognitive reasoning in progress...</span>
+    <div class="chat-bubble-agent px-4 py-3 rounded-2xl rounded-tl-none text-xs text-slate-200 shadow-xl border border-slate-800/90 flex flex-col gap-1.5 min-w-[260px] max-w-[85%] bg-slate-900/90 backdrop-blur-md">
+      <div class="flex items-center gap-2.5">
+        <div class="relative flex items-center justify-center w-4 h-4 shrink-0">
+          <span class="w-3.5 h-3.5 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin"></span>
+          <span class="absolute w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping opacity-75"></span>
+        </div>
+        <span id="chat-progress-step" class="font-mono text-xs font-semibold text-indigo-300 transition-all duration-200">
+          🧠 Analyzing prompt & selecting MCP tool...
+        </span>
+      </div>
+      <div class="flex items-center justify-between text-[10px] text-slate-500 font-mono border-t border-slate-800/80 pt-1.5 mt-0.5">
+        <span class="flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> MCP Pipeline Active
+        </span>
+        <span class="text-slate-600">Autonomous Cycle</span>
+      </div>
     </div>
   `;
   container.appendChild(typingDiv);
@@ -681,20 +696,66 @@ async function sendChatMessage() {
   if (sendBtn) sendBtn.disabled = true;
 
   try {
-    const res = await fetch(`/api/agents/${activeAgentForChat.id}/chat`, {
+    const res = await fetch(`/api/agents/${activeAgentForChat.id}/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message })
     });
 
-    const data = await res.json();
-    typingDiv.remove();
-
     if (!res.ok) {
-      throw new Error(data.detail || 'Chat request failed');
+      throw new Error(`Server returned HTTP ${res.status}`);
     }
 
-    appendMessageToChat('agent', data.response, data.created_at, data.status);
+    if (res.body && res.body.getReader) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let receivedFinal = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop(); // keep last incomplete chunk
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+
+          try {
+            const data = JSON.parse(trimmed.replace(/^data:\s*/, ''));
+            if (data.type === 'status') {
+              const stepEl = document.getElementById('chat-progress-step');
+              if (stepEl) {
+                stepEl.style.opacity = '0.5';
+                setTimeout(() => {
+                  stepEl.textContent = data.text;
+                  stepEl.style.opacity = '1';
+                }, 100);
+                scrollChatToBottom();
+              }
+            } else if (data.type === 'final') {
+              receivedFinal = true;
+              if (typingDiv) typingDiv.remove();
+              appendMessageToChat('agent', data.response, data.created_at, data.status);
+            }
+          } catch (e) {
+            console.warn('Error parsing SSE event:', e);
+          }
+        }
+      }
+
+      if (!receivedFinal && typingDiv) {
+        typingDiv.remove();
+      }
+    } else {
+      // Fallback if reader not supported
+      const data = await res.json();
+      if (typingDiv) typingDiv.remove();
+      appendMessageToChat('agent', data.response, data.created_at, data.status);
+    }
   } catch (err) {
     if (typingDiv) typingDiv.remove();
     console.error(err);
