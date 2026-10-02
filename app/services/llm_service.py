@@ -71,42 +71,148 @@ def to_serializable_dict(val: Any) -> Any:
         return str(val)
 
 
-def _dispatch_remote_http(url: str, payload: Dict[str, Any], method: str = "POST") -> Dict[str, Any]:
-    """Sends a real HTTP request to a remote MCP or Skill Builder endpoint."""
-    headers = {"Content-Type": "application/json", "User-Agent": "AutonomousAgentHub/1.0"}
-    clean_payload = to_serializable_dict(payload)
-    try:
-        logger.info(f"Dispatching real HTTP {method} to {url} with payload: {clean_payload}")
-        if method.upper() == "GET":
-            resp = requests.get(url, params=clean_payload, headers=headers, timeout=25)
+def _resolve_candidate_urls(url: str, is_deploy: bool = False) -> List[str]:
+    """
+    Computes priority list of candidate POST endpoints.
+    If given an SSE URL (ending in /sse), adapts to FastMCP /messages/ and REST handler routes.
+    """
+    cleaned_url = url.strip()
+    candidates = []
+
+    if "/sse" in cleaned_url.lower():
+        # Strip /sse or /sse/
+        base = cleaned_url.rstrip("/")
+        if base.lower().endswith("/sse"):
+            base = base[:-4].rstrip("/")
+
+        if is_deploy:
+            candidates.extend([
+                f"{base}/api/skills/deploy",
+                f"{base}/deploy",
+                f"{base}/api/skills",
+                f"{base}/messages/",
+                f"{base}/messages",
+            ])
         else:
-            resp = requests.post(url, json=clean_payload, headers=headers, timeout=25)
+            candidates.extend([
+                f"{base}/messages/",
+                f"{base}/messages",
+                f"{base}/tools/call",
+                f"{base}/api/execute",
+            ])
+        # Also keep original as last resort
+        candidates.append(cleaned_url)
+    else:
+        candidates.append(cleaned_url)
+        # If standard base URL provided, add common paths
+        base = cleaned_url.rstrip("/")
+        if is_deploy:
+            candidates.extend([f"{base}/api/skills/deploy", f"{base}/deploy"])
+        else:
+            candidates.extend([f"{base}/messages/", f"{base}/tools/call"])
 
+    # Deduplicate while preserving order
+    seen = set()
+    unique_candidates = []
+    for c in candidates:
+        if c not in seen:
+            seen.add(c)
+            unique_candidates.append(c)
+    return unique_candidates
+
+
+def _dispatch_remote_http(url: str, payload: Dict[str, Any], method: str = "POST", is_deploy: bool = False) -> Dict[str, Any]:
+    """
+    Sends a real HTTP request to remote MCP or Skill Builder endpoints.
+    Handles SSE -> /messages/ FastMCP adaptation, JSON-RPC formatting, and comprehensive response logging.
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream, text/plain, */*",
+        "User-Agent": "AutonomousAgentHub/1.0"
+    }
+    clean_payload = to_serializable_dict(payload)
+    candidate_urls = _resolve_candidate_urls(url, is_deploy=is_deploy)
+
+    last_response_info = None
+
+    for target_url in candidate_urls:
         try:
-            data = resp.json()
-        except Exception:
-            data = {"raw_response": resp.text}
+            logger.info(f"Dispatching HTTP {method} to '{target_url}' with payload: {json.dumps(clean_payload)[:250]}")
 
-        return {
-            "status_code": resp.status_code,
-            "success": resp.status_code in (200, 201, 202),
-            "endpoint": url,
-            "data": data
-        }
-    except requests.exceptions.Timeout:
-        logger.error(f"Timeout connecting to remote MCP endpoint: {url}")
-        return {"success": False, "error": f"Timeout after 25s connecting to {url}", "endpoint": url}
-    except Exception as e:
-        logger.error(f"Error executing remote request to {url}: {e}")
-        return {"success": False, "error": str(e), "endpoint": url}
+            if method.upper() == "GET":
+                resp = requests.get(target_url, params=clean_payload, headers=headers, timeout=25)
+            else:
+                # If target is a /messages or /messages/ endpoint, adapt to FastMCP JSON-RPC structure if not already formatted
+                post_body = clean_payload
+                if "/messages" in target_url.lower() and not ("jsonrpc" in clean_payload):
+                    post_body = {
+                        "jsonrpc": "2.0",
+                        "method": "tools/call",
+                        "params": {
+                            "name": clean_payload.get("action") or clean_payload.get("skill_name") or "execute",
+                            "arguments": clean_payload.get("parameters") or clean_payload
+                        },
+                        "id": 1
+                    }
+
+                resp = requests.post(target_url, json=post_body, headers=headers, timeout=25)
+
+            # Capture response telemetry
+            try:
+                data = resp.json()
+            except Exception:
+                data = {"raw_text": resp.text[:1000]}
+
+            last_response_info = {
+                "status_code": resp.status_code,
+                "success": resp.status_code in (200, 201, 202),
+                "endpoint": target_url,
+                "data": data,
+                "headers": dict(resp.headers),
+                "raw_response": resp.text[:1000]
+            }
+
+            if resp.status_code in (200, 201, 202):
+                logger.info(f"Success from '{target_url}' (Status {resp.status_code})")
+                return last_response_info
+
+            # If 405 Method Not Allowed or 404, log and attempt next candidate URL
+            logger.warning(
+                f"HTTP {resp.status_code} received from '{target_url}'. "
+                f"Response body: {resp.text[:300]}. Attempting next candidate..."
+            )
+
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout connecting to endpoint '{target_url}' (25s exceeded)")
+            last_response_info = {
+                "status_code": 408,
+                "success": False,
+                "error": f"Request timeout after 25s at {target_url}",
+                "endpoint": target_url
+            }
+        except Exception as e:
+            logger.exception(f"Exception during request to '{target_url}': {e}")
+            last_response_info = {
+                "status_code": 500,
+                "success": False,
+                "error": str(e),
+                "endpoint": target_url
+            }
+
+    # If all candidates exhausted, return best diagnostic information
+    return last_response_info or {
+        "status_code": 500,
+        "success": False,
+        "error": f"Unable to reach valid HTTP handler for {url}",
+        "endpoint": url
+    }
 
 
 def execute_tool_call(func_name: str, args: Dict[str, Any], skills: List[AgentSkill]) -> Dict[str, Any]:
     """
     Executes real remote MCP actions based on the Gemini function call.
     """
-    skill_map = {s.skill_name.lower(): s for s in skills if s.is_enabled}
-    
     # 1. Create / Build MCP Skill
     if func_name == "create_mcp_skill":
         skill_name = args.get("skill_name", "CustomSkill")
@@ -117,7 +223,7 @@ def execute_tool_call(func_name: str, args: Dict[str, Any], skills: List[AgentSk
         # Check if there is a connected builder skill URL, otherwise use default
         target_url = DEFAULT_SKILL_BUILDER_ENDPOINT + "/api/skills/deploy"
         for s in skills:
-            if "builder" in s.skill_name.lower() or "deploy" in s.skill_url.lower():
+            if s.is_enabled and ("builder" in s.skill_name.lower() or "deploy" in s.skill_url.lower() or "skill" in s.skill_name.lower()):
                 target_url = s.skill_url
                 break
                 
@@ -127,24 +233,30 @@ def execute_tool_call(func_name: str, args: Dict[str, Any], skills: List[AgentSk
             "code": code,
             "language": language
         }
-        res = _dispatch_remote_http(target_url, payload, method="POST")
+        res = _dispatch_remote_http(target_url, payload, method="POST", is_deploy=True)
         
         # Format response
         if res.get("success"):
-            live_url = res.get("data", {}).get("live_url") or res.get("data", {}).get("endpoint") or f"https://skill-builder-engine.onrender.com/sse/{skill_name.lower().replace(' ', '-')}"
+            data = res.get("data", {})
+            live_url = (
+                data.get("live_url")
+                or data.get("endpoint")
+                or data.get("url")
+                or f"https://skill-builder-engine.onrender.com/sse/{skill_name.lower().replace(' ', '-')}"
+            )
             return {
                 "status": "deployed",
                 "skill_name": skill_name,
                 "live_url": live_url,
                 "message": f"Skill '{skill_name}' successfully deployed to live MCP engine.",
-                "server_response": res.get("data")
+                "server_response": data
             }
         else:
             return {
                 "status": "deployment_failed",
-                "error": res.get("error") or res.get("data"),
+                "error": res.get("error") or res.get("data") or res.get("raw_response"),
                 "status_code": res.get("status_code"),
-                "endpoint": target_url
+                "endpoint": res.get("endpoint") or target_url
             }
 
     # 2. Deploy Skill Generic
@@ -153,7 +265,7 @@ def execute_tool_call(func_name: str, args: Dict[str, Any], skills: List[AgentSk
         endpoint_url = args.get("endpoint_url") or DEFAULT_SKILL_BUILDER_ENDPOINT + "/deploy"
         config = args.get("config") or {}
         payload = {"skill_name": skill_name, "config": config}
-        res = _dispatch_remote_http(endpoint_url, payload, method="POST")
+        res = _dispatch_remote_http(endpoint_url, payload, method="POST", is_deploy=True)
         return res
 
     # 3. Execute Connected Skill Tool Action
@@ -175,15 +287,15 @@ def execute_tool_call(func_name: str, args: Dict[str, Any], skills: List[AgentSk
                 "available_skills": [s.skill_name for s in skills if s.is_enabled]
             }
 
-        payload = {"action": action, "parameters": parameters}
-        return _dispatch_remote_http(target_skill.skill_url, payload, method="POST")
+        payload = {"action": action, "parameters": parameters, "skill_name": target_skill.skill_name}
+        return _dispatch_remote_http(target_skill.skill_url, payload, method="POST", is_deploy=False)
 
     # 4. Fallback Generic Remote HTTP Endpoint Caller
     elif func_name == "call_remote_mcp_endpoint":
         url = args.get("endpoint_url", "")
         payload = args.get("payload") or {}
         method = args.get("method", "POST")
-        return _dispatch_remote_http(url, payload, method=method)
+        return _dispatch_remote_http(url, payload, method=method, is_deploy=False)
 
     return {"error": f"Unknown tool function: {func_name}"}
 
