@@ -354,23 +354,34 @@ async def chat_with_agent_stream(
                     final_response = event.get("response", "")
                     final_status = event.get("status", "success")
 
-            # Persist to TaskLog
-            task_log = TaskLog(
-                agent_id=agent_id,
-                user_input=chat_in.message,
-                agent_response=final_response,
-                status=final_status
-            )
-            db.add(task_log)
-            db.commit()
-            db.refresh(task_log)
+            # Persist to TaskLog using fresh isolated DB session
+            task_log_id = None
+            created_at_iso = None
+            save_db = SessionLocal()
+            try:
+                task_log = TaskLog(
+                    agent_id=agent_id,
+                    user_input=chat_in.message,
+                    agent_response=final_response,
+                    status=final_status
+                )
+                save_db.add(task_log)
+                save_db.commit()
+                save_db.refresh(task_log)
+                task_log_id = task_log.id
+                created_at_iso = task_log.created_at.isoformat()
+            except Exception as db_err:
+                save_db.rollback()
+                print(f"[Warning] Failed to persist task_log to MySQL: {db_err}")
+            finally:
+                save_db.close()
 
             final_payload = {
                 "type": "final",
                 "response": final_response,
                 "status": final_status,
-                "task_log_id": task_log.id,
-                "created_at": task_log.created_at.isoformat()
+                "task_log_id": task_log_id,
+                "created_at": created_at_iso
             }
             yield f"data: {json.dumps(final_payload)}\n\n"
 
