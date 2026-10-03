@@ -348,6 +348,121 @@ def execute_tool_call(func_name: str, args: Dict[str, Any], skills: List[AgentSk
     Executes real remote MCP actions based on the Gemini function call.
     """
     clean_args = to_serializable_dict(args)
+    # 0. Commander Fleet Orchestration Tools
+    if func_name == "create_agent":
+        name = clean_args.get("name") or clean_args.get("agent_name", "Autonomous Agent")
+        role = clean_args.get("role") or clean_args.get("designation", "Specialist")
+        persona = clean_args.get("persona_instructions") or clean_args.get("system_prompt", "")
+        avatar_color = clean_args.get("avatar_color", "emerald")
+
+        from app.core.database import SessionLocal
+        from app.models.agent import Agent
+        db = SessionLocal()
+        try:
+            new_agent = Agent(
+                name=name.strip(),
+                role=role.strip(),
+                avatar_color=avatar_color.strip() if avatar_color else "emerald",
+                system_prompt=persona.strip() if persona else f"You are {name}, a {role}.",
+                is_active=True
+            )
+            db.add(new_agent)
+            db.commit()
+            db.refresh(new_agent)
+            agent_id = str(new_agent.id)
+            logger.info(f"Agent '{name}' created via LLM tool calling (ID: {agent_id})")
+            return {
+                "status": "success",
+                "message": f"Autonomous Agent '{name}' ({role}) registered and deployed to the fleet database successfully!",
+                "agent_id": agent_id,
+                "name": name,
+                "role": role,
+                "avatar_color": avatar_color,
+                "is_active": True
+            }
+        except Exception as err:
+            db.rollback()
+            logger.error(f"Failed to create agent via LLM tool: {err}")
+            return {"status": "error", "error": f"Database error creating agent: {str(err)}"}
+        finally:
+            db.close()
+
+    elif func_name == "list_fleet_agents":
+        from app.core.database import SessionLocal
+        from app.models.agent import Agent
+        db = SessionLocal()
+        try:
+            agents = db.query(Agent).order_by(Agent.created_at.desc()).all()
+            fleet = []
+            for ag in agents:
+                fleet.append({
+                    "id": str(ag.id),
+                    "name": ag.name,
+                    "role": ag.role,
+                    "is_active": bool(ag.is_active),
+                    "skills_count": len(ag.skills) if ag.skills else 0,
+                    "skills": [{"name": s.skill_name, "url": s.skill_url} for s in ag.skills] if ag.skills else []
+                })
+            return {"status": "success", "total_agents": len(fleet), "fleet": fleet}
+        except Exception as err:
+            return {"status": "error", "error": str(err)}
+        finally:
+            db.close()
+
+    elif func_name == "bind_skill_to_agent":
+        agent_name = (clean_args.get("agent_name") or clean_args.get("name", "")).lower().strip()
+        mcp_url = clean_args.get("mcp_url") or clean_args.get("skill_url", "")
+        skill_title = clean_args.get("skill_title") or clean_args.get("skill_name")
+
+        from app.core.database import SessionLocal
+        from app.models.agent import Agent, AgentSkill
+        db = SessionLocal()
+        try:
+            agents = db.query(Agent).all()
+            target_agent = None
+            for ag in agents:
+                if ag.name.lower() == agent_name or agent_name in ag.name.lower():
+                    target_agent = ag
+                    break
+            if not target_agent:
+                return {"status": "error", "message": f"Agent matching '{agent_name}' not found in fleet"}
+
+            inferred_name = skill_title or mcp_url.split("//")[-1].split(".")[0].replace("-", " ").title() + " MCP"
+            new_skill = AgentSkill(
+                agent_id=target_agent.id,
+                skill_name=inferred_name.strip(),
+                skill_url=mcp_url.strip(),
+                is_enabled=True
+            )
+            db.add(new_skill)
+            db.commit()
+            db.refresh(new_skill)
+            return {
+                "status": "success",
+                "message": f"Skill '{inferred_name}' ({mcp_url}) attached to agent '{target_agent.name}'",
+                "skill_id": str(new_skill.id),
+                "agent_id": str(target_agent.id)
+            }
+        except Exception as err:
+            db.rollback()
+            return {"status": "error", "error": str(err)}
+        finally:
+            db.close()
+
+    elif func_name == "order_skill_from_builder":
+        skill_name = clean_args.get("skill_name", "CustomSkill")
+        specifications = clean_args.get("specifications") or clean_args.get("description", "")
+        builder_url = DEFAULT_SKILL_BUILDER_ENDPOINT + "/sse"
+        tool_args = {
+            "skill_name": skill_name,
+            "description": specifications,
+            "python_code": f"""from fastmcp import FastMCP\nmcp = FastMCP('{skill_name}')\n@mcp.tool()\ndef run_action(param: str) -> str:\n    return f'Executed {skill_name}: {{param}}'\nif __name__ == '__main__':\n    mcp.run(transport='sse')""",
+            "requirements_txt": "fastmcp>=0.1.0\nrequests>=2.31.0",
+            "is_private_repo": False
+        }
+        res = _dispatch_fastmcp_sse(builder_url, "generate_and_deploy_skill", tool_args)
+        return {"status": "success" if res.get("success") else "error", "result": res}
+
 
     # 1. Create / Build MCP Skill
     if func_name == "create_mcp_skill":
@@ -458,6 +573,45 @@ def execute_tool_call(func_name: str, args: Dict[str, Any], skills: List[AgentSk
 # =========================================================================
 # Tool Function Declarations for Gemini
 # =========================================================================
+def create_agent(name: str, role: str, persona_instructions: str, avatar_color: str = "emerald") -> dict:
+    """
+    Registers and deploys a new autonomous agent persona in the fleet database.
+    Args:
+        name: Full agent name (e.g. 'Abu', 'Maya - Structural CAD AI').
+        role: Operational role or specialization (e.g. 'Skill Builder', 'Procurement Specialist').
+        persona_instructions: System instructions, directives, and behavioral guidelines for the new agent.
+        avatar_color: Visual badge accent color (emerald, cyan, amber, violet, rose, indigo, blue, fuchsia).
+    """
+    pass
+
+
+def list_fleet_agents() -> dict:
+    """
+    Queries and lists all autonomous agents currently deployed in the fleet.
+    """
+    pass
+
+
+def bind_skill_to_agent(agent_name: str, mcp_url: str, skill_title: str = "") -> dict:
+    """
+    Attaches a remote MCP tool endpoint URL to an agent in the fleet.
+    Args:
+        agent_name: Name of the agent to attach the skill to.
+        mcp_url: Remote SSE or HTTP endpoint URL of the MCP server.
+        skill_title: Optional custom name for the MCP skill.
+    """
+    pass
+
+
+def order_skill_from_builder(skill_name: str, specifications: str) -> dict:
+    """
+    Orders a new FastMCP microservice skill from the Skill Builder Engine.
+    Args:
+        skill_name: Name for the new skill (e.g. 'WhatsApp Sender').
+        specifications: Functional requirements and purpose of the skill.
+    """
+    pass
+
 
 def create_mcp_skill(skill_name: str, description: str, language: str = "python", code: str = "") -> dict:
     """
@@ -508,7 +662,7 @@ def call_remote_mcp_endpoint(endpoint_url: str, payload: dict = None, method: st
 
 def get_agent_gemini_tools(skills: List[AgentSkill]) -> list:
     """Returns the list of Python callable tools to bind to Gemini."""
-    return [create_mcp_skill, deploy_skill, execute_connected_skill, call_remote_mcp_endpoint]
+    return [create_agent, list_fleet_agents, bind_skill_to_agent, order_skill_from_builder, create_mcp_skill, deploy_skill, execute_connected_skill, call_remote_mcp_endpoint]
 
 
 # =========================================================================
