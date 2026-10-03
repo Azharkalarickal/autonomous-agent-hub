@@ -469,54 +469,78 @@ function applySkillPreset(name, url) {
 // ==========================================
 
 async function openChatDrawer(agentId) {
-  const agent = agentsState.find(a => a.id === agentId);
-  if (!agent) return;
+  try {
+    let agent = agentsState.find(a => String(a.id) === String(agentId));
+    if (!agent) {
+      // Fallback fetch from API if not yet in state
+      try {
+        const res = await fetch(`/api/agents/${agentId}`);
+        if (res.ok) {
+          agent = await res.json();
+          agentsState.push(agent);
+        }
+      } catch (e) {
+        console.warn("Could not fetch agent directly:", e);
+      }
+    }
 
-  activeAgentForChat = agent;
+    if (!agent) {
+      showToast('Agent not found', 'error');
+      return;
+    }
 
-  // Set Agent Info in Drawer
-  const colorKey = AVATAR_COLORS[agent.avatar_color] ? agent.avatar_color : 'emerald';
-  const colorStyle = AVATAR_COLORS[colorKey];
+    activeAgentForChat = agent;
 
-  const avatarEl = document.getElementById('drawer-agent-avatar');
-  const nameEl = document.getElementById('drawer-agent-name');
-  const roleEl = document.getElementById('drawer-agent-role');
+    // Immediately unhide and slide in Drawer UI
+    const backdrop = document.getElementById('chat-drawer-backdrop');
+    const panel = document.getElementById('chat-drawer-panel');
 
-  if (avatarEl) {
-    avatarEl.className = `w-9 h-9 rounded-xl ${colorStyle.bg} ${colorStyle.border} border flex items-center justify-center font-bold text-sm ${colorStyle.text}`;
-    avatarEl.textContent = agent.name.charAt(0).toUpperCase();
+    if (backdrop && panel) {
+      backdrop.classList.remove('hidden');
+      setTimeout(() => {
+        backdrop.classList.remove('opacity-0');
+        panel.classList.remove('translate-x-full');
+      }, 10);
+    }
+
+    // Set Agent Info in Drawer
+    const colorKey = (agent.avatar_color && AVATAR_COLORS[agent.avatar_color]) ? agent.avatar_color : 'emerald';
+    const colorStyle = AVATAR_COLORS[colorKey] || AVATAR_COLORS['emerald'];
+    const agentName = agent.name || 'Autonomous Agent';
+    const agentRole = agent.role || 'Specialist';
+    const initial = (agentName.charAt(0) || 'A').toUpperCase();
+
+    const avatarEl = document.getElementById('drawer-agent-avatar');
+    const nameEl = document.getElementById('drawer-agent-name');
+    const roleEl = document.getElementById('drawer-agent-role');
+
+    if (avatarEl) {
+      avatarEl.className = `w-9 h-9 rounded-xl ${colorStyle.bg} ${colorStyle.border} border flex items-center justify-center font-bold text-sm ${colorStyle.text}`;
+      avatarEl.textContent = initial;
+    }
+    if (nameEl) nameEl.textContent = agentName;
+    if (roleEl) roleEl.textContent = agentRole;
+
+    renderChatHeaderSkills();
+
+    // Reset/Load Message History
+    const messagesContainer = document.getElementById('chat-messages-container');
+    if (messagesContainer) {
+      messagesContainer.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-12 text-slate-500">
+          <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-indigo-400 mb-2"></i>
+          <p class="text-xs">Connecting to cognitive task log...</p>
+        </div>
+      `;
+      if (window.lucide && lucide.createIcons) lucide.createIcons();
+    }
+
+    // Fetch past logs asynchronously
+    await loadAgentChatLogs(agentId);
+  } catch (err) {
+    console.error("Error opening chat drawer:", err);
+    showToast('Failed to open chat window', 'error');
   }
-  if (nameEl) nameEl.textContent = agent.name;
-  if (roleEl) roleEl.textContent = agent.role;
-
-  renderChatHeaderSkills();
-
-  // Reset/Load Message History
-  const messagesContainer = document.getElementById('chat-messages-container');
-  if (messagesContainer) {
-    messagesContainer.innerHTML = `
-      <div class="flex flex-col items-center justify-center py-12 text-slate-500">
-        <i data-lucide="loader-2" class="w-6 h-6 animate-spin text-indigo-400 mb-2"></i>
-        <p class="text-xs">Connecting to cognitive task log...</p>
-      </div>
-    `;
-    lucide.createIcons();
-  }
-
-  // Open Drawer UI
-  const backdrop = document.getElementById('chat-drawer-backdrop');
-  const panel = document.getElementById('chat-drawer-panel');
-
-  if (backdrop && panel) {
-    backdrop.classList.remove('hidden');
-    requestAnimationFrame(() => {
-      backdrop.classList.remove('opacity-0');
-      panel.classList.remove('translate-x-full');
-    });
-  }
-
-  // Fetch past logs
-  await loadAgentChatLogs(agentId);
 }
 
 function closeChatDrawer() {
