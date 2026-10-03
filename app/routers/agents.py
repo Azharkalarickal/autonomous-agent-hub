@@ -12,6 +12,7 @@ from app.schemas.agent import (
     AgentOut,
     AgentSkillCreate,
     AgentSkillOut,
+    AgentSkillUpdate,
 )
 from app.schemas.chat import ChatRequest, ChatResponse, TaskLogOut
 from app.services.llm_service import generate_agent_response
