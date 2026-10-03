@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.models.agent import Agent, AgentSkill
 from app.models.task_log import TaskLog
 from app.schemas.agent import (
