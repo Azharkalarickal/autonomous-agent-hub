@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: commander-orchestrator-mcp
+    runtime: python
+    buildCommand: pip install -r requirements_commander.txt
+    startCommand: python commander_orchestrator_mcp.py
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
+      - key: AGENT_HUB_API_URL
+        value: https://autonomous-agent-hub.onrender.com
+      - key: SKILL_BUILDER_BASE_URL
+        value: https://skill-builder-engine.onrender.com
