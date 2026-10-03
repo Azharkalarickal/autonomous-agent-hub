@@ -372,22 +372,42 @@
         </button>
       </div>
 
-      <!-- Quick Preset Endpoints -->
-      <div class="pt-4">
-        <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">Preset MCP Templates</label>
-        <div class="grid grid-cols-2 gap-2 mb-4">
-          <button type="button" onclick="applySkillPreset('WhatsApp Gateway', 'https://mcp-whatsapp-bridge.onrender.com/sse')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
-            💬 WhatsApp MCP
-          </button>
-          <button type="button" onclick="applySkillPreset('CAD Vector Engine', 'https://cad-mesh-endpoint.onrender.com/sse')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
-            📐 CAD Mesh API
-          </button>
-          <button type="button" onclick="applySkillPreset('ERP Database Sync', 'https://erp-connector.internal.net/mcp')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
-            📊 ERP Sync
-          </button>
-          <button type="button" onclick="applySkillPreset('GitHub Code MCP', 'https://github-mcp.render.com/events')" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] text-slate-300 font-medium transition-colors text-left truncate">
-            🐙 GitHub MCP
-          </button>
+      <!-- Quick Preset Endpoints & Fleet Skill Pickup -->
+      <div class="pt-4 space-y-3">
+        <div>
+          <label class="text-[11px] font-semibold text-amber-400 uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+            <i data-lucide="zap" class="w-3.5 h-3.5"></i> Featured MCP Skills
+          </label>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <button type="button" onclick="applySkillPreset('Commander Orchestrator MCP', 'https://autonomous-agent-hub.onrender.com/sse')" class="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-indigo-950/50 border border-indigo-500/40 text-[11px] text-indigo-300 font-semibold transition-all text-left truncate shadow-sm">
+              ⚡ Commander MCP
+            </button>
+            <button type="button" onclick="applySkillPreset('Skill Builder Engine', 'https://skill-builder-engine.onrender.com/sse')" class="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-amber-950/50 border border-amber-500/40 text-[11px] text-amber-300 font-semibold transition-all text-left truncate shadow-sm">
+              🛠️ Skill Builder Engine
+            </button>
+            <button type="button" onclick="applySkillPreset('WhatsApp Vendor MCP', 'https://mcp-whatsapp-procure.onrender.com/sse')" class="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-emerald-950/50 border border-slate-800 hover:border-emerald-500/40 text-[11px] text-slate-300 font-medium transition-all text-left truncate">
+              💬 WhatsApp MCP
+            </button>
+            <button type="button" onclick="applySkillPreset('AutoCAD Geometry Engine', 'https://cad-worker-mesh.onrender.com/sse')" class="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-cyan-950/50 border border-slate-800 hover:border-cyan-500/40 text-[11px] text-slate-300 font-medium transition-all text-left truncate">
+              📐 AutoCAD Engine
+            </button>
+            <button type="button" onclick="applySkillPreset('ERP Inventory Sync', 'https://api.internal-erp.io/mcp/v1')" class="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-violet-950/50 border border-slate-800 hover:border-violet-500/40 text-[11px] text-slate-300 font-medium transition-all text-left truncate">
+              📊 ERP Sync
+            </button>
+            <button type="button" onclick="applySkillPreset('SIEM Telemetry Pipeline', 'https://siem-mcp.internal.net/events')" class="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-rose-950/50 border border-slate-800 hover:border-rose-500/40 text-[11px] text-slate-300 font-medium transition-all text-left truncate">
+              🛡️ SIEM Telemetry
+            </button>
+          </div>
+        </div>
+
+        <!-- Dynamic Pickup from Active Fleet -->
+        <div id="fleet-pickup-container" class="bg-slate-900/80 border border-slate-800 rounded-xl p-2.5">
+          <label class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-1.5">
+            <i data-lucide="copy" class="w-3 h-3 text-indigo-400"></i> Pickup Existing Skill from Fleet
+          </label>
+          <select id="fleet-skill-pickup-select" onchange="onFleetSkillPickupSelected(this.value)" class="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+            <option value="">-- Choose an existing skill to duplicate --</option>
+          </select>
         </div>
       </div>
 
@@ -409,6 +429,57 @@
           </button>
           <button type="submit" class="px-5 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/30 transition-all">
             Attach Skill
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+    <!-- 3.5. EDIT SKILL (MCP ENDPOINT) MODAL -->
+  <div id="edit-skill-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+    <div class="glass-modal rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl border border-slate-700 relative overflow-hidden">
+      
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+            <i data-lucide="edit-3" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Edit MCP Tool Endpoint</h3>
+            <p class="text-xs text-slate-400">Update skill parameters for <span id="edit-skill-agent-title" class="text-amber-300 font-semibold">Agent</span></p>
+          </div>
+        </div>
+        <button onclick="closeModal('edit-skill-modal')" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="edit-skill-form" class="space-y-4 pt-4">
+        <input type="hidden" id="edit-skill-id" name="skill_id">
+        <input type="hidden" id="edit-skill-agent-id" name="agent_id">
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Skill Name *</label>
+          <input type="text" id="edit-skill-name" name="skill_name" required class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-amber-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Remote Endpoint URL (SSE or HTTP) *</label>
+          <input type="url" id="edit-skill-url" name="skill_url" required class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-100 font-mono focus:outline-none focus:border-amber-500">
+        </div>
+
+        <div class="flex items-center gap-2 pt-1">
+          <input type="checkbox" id="edit-skill-is-enabled" name="is_enabled" class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500">
+          <label for="edit-skill-is-enabled" class="text-xs text-slate-300 font-medium">Skill Active & Enabled</label>
+        </div>
+
+        <div class="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+          <button type="button" onclick="closeModal('edit-skill-modal')" class="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+            Cancel
+          </button>
+          <button type="submit" id="edit-skill-submit-btn" class="px-5 py-2 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-600/30 transition-all">
+            Save Skill Changes
           </button>
         </div>
       </form>

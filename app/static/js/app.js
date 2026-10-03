@@ -388,6 +388,7 @@ function openAddSkillModal(agentId) {
   const form = document.getElementById('add-skill-form');
   if (form) form.reset();
 
+  populateFleetSkillPickup();
   openModal('add-skill-modal');
 }
 
@@ -919,3 +920,103 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize Lucide icons
   lucide.createIcons();
 });
+
+
+// ==========================================
+// Fleet Skill Pickup & Edit Skill Controllers
+// ==========================================
+
+function populateFleetSkillPickup() {
+  const select = document.getElementById('fleet-skill-pickup-select');
+  if (!select) return;
+
+  const uniqueSkillsMap = new Map();
+  agentsState.forEach(ag => {
+    (ag.skills || []).forEach(s => {
+      if (!uniqueSkillsMap.has(s.skill_name)) {
+        uniqueSkillsMap.set(s.skill_name, { name: s.skill_name, url: s.skill_url, fromAgent: ag.name });
+      }
+    });
+  });
+
+  select.innerHTML = '<option value="">-- Choose an existing skill to duplicate --</option>';
+  uniqueSkillsMap.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = JSON.stringify({ name: item.name, url: item.url });
+    opt.textContent = `${item.name} (${item.url})`;
+    select.appendChild(opt);
+  });
+}
+
+function onFleetSkillPickupSelected(jsonVal) {
+  if (!jsonVal) return;
+  try {
+    const parsed = JSON.parse(jsonVal);
+    applySkillPreset(parsed.name, parsed.url);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function openEditSkillModal(agentId, skillId, event) {
+  if (event) event.stopPropagation();
+
+  const agent = agentsState.find(a => a.id === agentId);
+  if (!agent) return;
+
+  const skill = (agent.skills || []).find(s => s.id === skillId);
+  if (!skill) return;
+
+  document.getElementById('edit-skill-agent-title').textContent = agent.name;
+  document.getElementById('edit-skill-id').value = skill.id;
+  document.getElementById('edit-skill-agent-id').value = agent.id;
+  document.getElementById('edit-skill-name').value = skill.skill_name;
+  document.getElementById('edit-skill-url').value = skill.skill_url;
+  document.getElementById('edit-skill-is-enabled').checked = skill.is_enabled;
+
+  openModal('edit-skill-modal');
+}
+
+async function handleUpdateSkill(e) {
+  e.preventDefault();
+  const form = document.getElementById('edit-skill-form');
+  const agentId = form.elements['agent_id'].value;
+  const skillId = form.elements['skill_id'].value;
+  const skill_name = form.elements['skill_name'].value.trim();
+  const skill_url = form.elements['skill_url'].value.trim();
+  const is_enabled = form.elements['is_enabled'].checked;
+
+  if (!skill_name || !skill_url) {
+    showToast('Please fill all skill fields', 'warning');
+    return;
+  }
+
+  const submitBtn = document.getElementById('edit-skill-submit-btn');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Saving...';
+    lucide.createIcons();
+  }
+
+  try {
+    const res = await fetch(`/api/agents/${agentId}/skills/${skillId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skill_name, skill_url, is_enabled })
+    });
+
+    if (!res.ok) throw new Error('Failed to update skill configuration');
+
+    closeModal('edit-skill-modal');
+    showToast(`Skill '${skill_name}' updated successfully!`, 'success');
+    await loadAgents();
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to update MCP skill', 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = 'Save Skill Changes';
+    }
+  }
+}

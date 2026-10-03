@@ -155,6 +155,34 @@ def attach_skill(agent_id: str, skill_in: AgentSkillCreate, db: Session = Depend
     return new_skill
 
 
+@router.put("/{agent_id}/skills/{skill_id}", response_model=AgentSkillOut)
+def update_skill(agent_id: str, skill_id: str, skill_in: AgentSkillUpdate, db: Session = Depends(get_db)):
+    """
+    Update an MCP skill endpoint configuration (name, URL, active status).
+    """
+    skill = db.query(AgentSkill).filter(
+        AgentSkill.id == skill_id,
+        AgentSkill.agent_id == agent_id
+    ).first()
+
+    if not skill:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Skill with ID '{skill_id}' for agent '{agent_id}' not found"
+        )
+
+    if skill_in.skill_name is not None:
+        skill.skill_name = skill_in.skill_name.strip()
+    if skill_in.skill_url is not None:
+        skill.skill_url = skill_in.skill_url.strip()
+    if skill_in.is_enabled is not None:
+        skill.is_enabled = skill_in.is_enabled
+
+    db.commit()
+    db.refresh(skill)
+    return skill
+
+
 @router.delete("/{agent_id}/skills/{skill_id}", status_code=status.HTTP_200_OK)
 def detach_skill(agent_id: str, skill_id: str, db: Session = Depends(get_db)):
     """
